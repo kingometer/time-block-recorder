@@ -327,4 +327,97 @@ void main() {
       expect(state.daySeconds(date, AppCategory.workStudy.code), 3600);
     });
   });
+
+  group('周统计（今天向前7天）', () {
+    test('范围是今天向前7天，只统计有效日期，平均=总时长/有效天数', () {
+      final state = makeState();
+      final base = DateTime(2026, 9, 1); // 周二
+      final study = state.eventsOf(AppCategory.workStudy).first;
+      final ent = state.eventsOf(AppCategory.entertainment).first;
+      state.addBackfill(
+        event: study,
+        start: DateTime(2026, 8, 31, 10),
+        end: DateTime(2026, 8, 31, 12),
+      );
+      state.addBackfill(
+        event: ent,
+        start: DateTime(2026, 9, 1, 10),
+        end: DateTime(2026, 9, 1, 11),
+      );
+      final stats = state.computeWeekStats(base);
+      expect(stats.weekStart, DateTime(2026, 8, 26));
+      expect(stats.weekEnd, DateTime(2026, 9, 1));
+      expect(stats.activeDayCount, 2);
+      expect(stats.activeDays.length, 2);
+      expect(stats.activeDays.first.date, DateTime(2026, 8, 31));
+      expect(stats.totalSec, 3 * 3600);
+      expect(stats.averageSec, (3 * 3600) ~/ 2);
+    });
+
+    test('无事件记录的日期被过滤，不渲染0时长日期', () {
+      final state = makeState();
+      final base = DateTime(2026, 9, 1);
+      final study = state.eventsOf(AppCategory.workStudy).first;
+      // 只在区间最后一天有记录，其余6天无记录
+      state.addBackfill(
+        event: study,
+        start: DateTime(2026, 9, 1, 9),
+        end: DateTime(2026, 9, 1, 10),
+      );
+      final stats = state.computeWeekStats(base);
+      expect(stats.activeDayCount, 1);
+      expect(stats.activeDays.length, 1);
+      expect(stats.totalSec, 3600);
+      expect(stats.averageSec, 3600);
+    });
+
+    test('一周完全没有事件记录：hasRecords=false，平均0不崩溃', () {
+      final state = makeState();
+      final stats = state.computeWeekStats(DateTime(2026, 9, 1));
+      expect(stats.hasRecords, isFalse);
+      expect(stats.activeDayCount, 0);
+      expect(stats.activeDays, isEmpty);
+      expect(stats.totalSec, 0);
+      expect(stats.averageSec, 0);
+      expect(stats.weekTotals.values.every((v) => v == 0), isTrue);
+    });
+
+    test('跨零点记录在两个日期都算有效，日期比较抹除时分秒', () {
+      final state = makeState();
+      final study = state.eventsOf(AppCategory.workStudy).first;
+      state.addBackfill(
+        event: study,
+        start: DateTime(2026, 8, 31, 23),
+        end: DateTime(2026, 9, 1, 1),
+      );
+      final stats = state.computeWeekStats(DateTime(2026, 9, 1, 15, 30));
+      expect(stats.activeDayCount, 2);
+      expect(stats.activeDays.first.date, DateTime(2026, 8, 31));
+      expect(stats.activeDays.last.date, DateTime(2026, 9, 1));
+      expect(stats.totalSec, 2 * 3600);
+    });
+
+    test('有效日期按模式计入工作日/休息日数量', () {
+      final state = makeState();
+      final study = state.eventsOf(AppCategory.workStudy).first;
+      final ent = state.eventsOf(AppCategory.entertainment).first;
+      // 8/31 周一（工作日），9/5 周六（休息日）
+      state.addBackfill(
+        event: study,
+        start: DateTime(2026, 8, 31, 10),
+        end: DateTime(2026, 8, 31, 11),
+      );
+      state.addBackfill(
+        event: ent,
+        start: DateTime(2026, 9, 5, 14),
+        end: DateTime(2026, 9, 5, 15),
+      );
+      final stats = state.computeWeekStats(DateTime(2026, 9, 5));
+      expect(stats.activeDayCount, 2);
+      expect(stats.workdayCount, 1);
+      expect(stats.restdayCount, 1);
+      expect(stats.workdayTotals[AppCategory.workStudy.code], 3600);
+      expect(stats.restdayTotals[AppCategory.entertainment.code], 3600);
+    });
+  });
 }

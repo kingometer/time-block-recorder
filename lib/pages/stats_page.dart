@@ -397,134 +397,57 @@ class _WeekView extends StatefulWidget {
 }
 
 class _WeekViewState extends State<_WeekView> {
-  DateTime _base = DateTime.now();
-
   @override
   Widget build(BuildContext context) {
     final state = context.watch<AppState>();
-    final stats = state.computeWeekStats(_base);
+    final stats = state.computeWeekStats();
     final start = stats.weekStart;
-    final end = start.add(const Duration(days: 6));
+    final end = stats.weekEnd;
+    final scheme = Theme.of(context).colorScheme;
 
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
-        Row(
-          children: [
-            IconButton(
-              onPressed: () => setState(
-                () => _base = start.subtract(const Duration(days: 7)),
-              ),
-              icon: const Icon(Icons.chevron_left),
-            ),
-            Expanded(
-              child: Center(
-                child: Text(
-                  '${start.month}月${start.day}日 - ${end.month}月${end.day}日',
-                  style: const TextStyle(
-                    fontSize: 15,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-              ),
-            ),
-            IconButton(
-              onPressed: () =>
-                  setState(() => _base = start.add(const Duration(days: 7))),
-              icon: const Icon(Icons.chevron_right),
-            ),
-          ],
+        Center(
+          child: Text(
+            '${start.month}月${start.day}日 - ${end.month}月${end.day}日 · 最近7天',
+            style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
+          ),
         ),
         const SizedBox(height: 12),
-        CategoryPieChart(totals: stats.weekTotals, title: '本周分类占比'),
-        const SizedBox(height: 10),
-        _ModeAverageCard(
-          title: '工作日平均时长',
-          subtitle: '共 ${stats.workdayCount} 个工作日',
-          color: const Color(0xFF3D7BFD),
-          totals: stats.workdayTotals,
-          count: stats.workdayCount,
-        ),
-        const SizedBox(height: 10),
-        _ModeAverageCard(
-          title: '休息日平均时长',
-          subtitle: '共 ${stats.restdayCount} 个休息日',
-          color: const Color(0xFF10B981),
-          totals: stats.restdayTotals,
-          count: stats.restdayCount,
-        ),
-        if (stats.emergencyDays.isNotEmpty) ...[
-          const SizedBox(height: 10),
-          Card(
-            margin: EdgeInsets.zero,
-            child: Padding(
-              padding: const EdgeInsets.all(14),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text(
-                    '其他日期（不计入平均）',
-                    style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
-                  ),
-                  const SizedBox(height: 6),
-                  for (final d in stats.emergencyDays)
-                    Padding(
-                      padding: const EdgeInsets.only(top: 4),
-                      child: Row(
-                        children: [
-                          const Icon(
-                            Icons.warning_amber_outlined,
-                            size: 15,
-                            color: Color(0xFFEF4444),
-                          ),
-                          const SizedBox(width: 6),
-                          Text(
-                            '${d.month}月${d.day}日 ${weekdayName(d.weekday)}',
-                            style: const TextStyle(fontSize: 13),
-                          ),
-                        ],
-                      ),
-                    ),
-                ],
+        if (!stats.hasRecords)
+          Padding(
+            padding: const EdgeInsets.only(top: 48),
+            child: Center(
+              child: Text(
+                '本周暂无记录',
+                style: TextStyle(fontSize: 14, color: scheme.onSurfaceVariant),
               ),
             ),
-          ),
-        ],
-        const SizedBox(height: 10),
-        _WeeklyGoalCard(stats: stats),
-        const SizedBox(height: 10),
-        Card(
-          margin: EdgeInsets.zero,
-          child: Padding(
-            padding: const EdgeInsets.all(14),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text(
-                  '本周累计',
-                  style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
-                ),
-                const SizedBox(height: 6),
-                for (final c in AppCategory.values)
-                  Padding(
-                    padding: const EdgeInsets.only(top: 6),
-                    child: Row(
-                      children: [
-                        Icon(c.icon, size: 16, color: c.color),
-                        const SizedBox(width: 6),
-                        Text(c.label, style: const TextStyle(fontSize: 13)),
-                        const Spacer(),
-                        Text(
-                          formatDuration(stats.weekTotals[c.code] ?? 0),
-                          style: const TextStyle(fontSize: 13),
-                        ),
-                      ],
-                    ),
-                  ),
-              ],
+          )
+        else ...[
+          _WeekSummaryCard(stats: stats),
+          const SizedBox(height: 12),
+          CategoryPieChart(totals: stats.weekTotals, title: '本周分类占比'),
+          const SizedBox(height: 12),
+          const Padding(
+            padding: EdgeInsets.only(bottom: 8),
+            child: Text(
+              '每日明细',
+              style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
             ),
           ),
-        ),
+          for (final day in stats.activeDays)
+            _DaySummaryCard(
+              date: day.date,
+              mode: state.modeForDate(day.date),
+              totals: day.totals,
+            ),
+          const SizedBox(height: 10),
+          _WeeklyGoalCard(stats: stats),
+          const SizedBox(height: 10),
+          _WeekTotalCard(stats: stats),
+        ],
       ],
     );
   }
@@ -620,24 +543,146 @@ class _GoalRow extends StatelessWidget {
   }
 }
 
-class _ModeAverageCard extends StatelessWidget {
-  const _ModeAverageCard({
-    required this.title,
-    required this.subtitle,
-    required this.color,
-    required this.totals,
-    required this.count,
-  });
+/// 周汇总卡片：有效天数、总时长、日均时长（总时长 / 有效记录天数）。
+class _WeekSummaryCard extends StatelessWidget {
+  const _WeekSummaryCard({required this.stats});
 
-  final String title;
-  final String subtitle;
-  final Color color;
-  final Map<String, int> totals;
-  final int count;
+  final WeekStats stats;
 
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
+    return Card(
+      margin: EdgeInsets.zero,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 14),
+        child: Row(
+          children: [
+            _summaryItem(context, '${stats.activeDayCount} 天', '有效天数'),
+            _summaryItem(context, formatDuration(stats.totalSec), '总时长'),
+            _summaryItem(context, formatDuration(stats.averageSec), '日均时长'),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _summaryItem(BuildContext context, String value, String label) {
+    return Expanded(
+      child: Column(
+        children: [
+          Text(
+            value,
+            textAlign: TextAlign.center,
+            style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+          ),
+          const SizedBox(height: 2),
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 11,
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// 单日明细卡片：仅渲染存在事件记录的有效日期。
+class _DaySummaryCard extends StatelessWidget {
+  const _DaySummaryCard({
+    required this.date,
+    required this.mode,
+    required this.totals,
+  });
+
+  final DateTime date;
+  final DayMode mode;
+  final Map<String, int> totals;
+
+  int get _totalSec => totals.values.fold<int>(0, (sum, v) => sum + v);
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      margin: const EdgeInsets.only(bottom: 8),
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    '${date.month}月${date.day}日 ${weekdayName(date.weekday)}',
+                    style: const TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 3,
+                  ),
+                  decoration: BoxDecoration(
+                    color: _modeColor(mode).withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Text(
+                    mode.label,
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                      color: _modeColor(mode),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  formatDuration(_totalSec),
+                  style: const TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
+            ),
+            for (final c in AppCategory.values)
+              if ((totals[c.code] ?? 0) > 0)
+                Padding(
+                  padding: const EdgeInsets.only(top: 6),
+                  child: Row(
+                    children: [
+                      Icon(c.icon, size: 14, color: c.color),
+                      const SizedBox(width: 6),
+                      Text(c.label, style: const TextStyle(fontSize: 12)),
+                      const Spacer(),
+                      Text(
+                        formatDuration(totals[c.code]!),
+                        style: const TextStyle(fontSize: 12),
+                      ),
+                    ],
+                  ),
+                ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// 最近 7 天累计时长卡片。
+class _WeekTotalCard extends StatelessWidget {
+  const _WeekTotalCard({required this.stats});
+
+  final WeekStats stats;
+
+  @override
+  Widget build(BuildContext context) {
     return Card(
       margin: EdgeInsets.zero,
       child: Padding(
@@ -645,35 +690,11 @@ class _ModeAverageCard extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Row(
-              children: [
-                Container(
-                  width: 10,
-                  height: 10,
-                  decoration: BoxDecoration(
-                    color: color,
-                    shape: BoxShape.circle,
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Text(
-                  title,
-                  style: const TextStyle(
-                    fontSize: 15,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-                const Spacer(),
-                Text(
-                  subtitle,
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: scheme.onSurfaceVariant,
-                  ),
-                ),
-              ],
+            const Text(
+              '最近7天累计',
+              style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
             ),
-            const SizedBox(height: 8),
+            const SizedBox(height: 6),
             for (final c in AppCategory.values)
               Padding(
                 padding: const EdgeInsets.only(top: 6),
@@ -684,9 +705,7 @@ class _ModeAverageCard extends StatelessWidget {
                     Text(c.label, style: const TextStyle(fontSize: 13)),
                     const Spacer(),
                     Text(
-                      count > 0
-                          ? '平均 ${formatDuration((totals[c.code] ?? 0) ~/ count)}'
-                          : '无数据',
+                      formatDuration(stats.weekTotals[c.code] ?? 0),
                       style: const TextStyle(fontSize: 13),
                     ),
                   ],
@@ -815,8 +834,9 @@ class _RecordTile extends StatelessWidget {
                   padding: const EdgeInsets.only(top: 2),
                   child: Text(
                     '备注：$note',
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
+                    softWrap: true,
+                    maxLines: null,
+                    overflow: TextOverflow.visible,
                     style: TextStyle(
                       fontSize: 11,
                       color: Theme.of(context).colorScheme.onSurfaceVariant,

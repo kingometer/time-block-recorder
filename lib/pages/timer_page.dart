@@ -65,8 +65,9 @@ class TimerPage extends StatelessWidget {
                   const SizedBox(height: 4),
                   Text(
                     '备注：${event.note}',
-                    maxLines: 3,
-                    overflow: TextOverflow.ellipsis,
+                    softWrap: true,
+                    maxLines: null,
+                    overflow: TextOverflow.visible,
                     style: const TextStyle(fontSize: 12),
                   ),
                 ],
@@ -464,8 +465,9 @@ class _RunningTimerCardState extends State<_RunningTimerCard> {
                     padding: const EdgeInsets.only(top: 4),
                     child: Text(
                       '备注：${session.event.note}',
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
+                      softWrap: true,
+                      maxLines: null,
+                      overflow: TextOverflow.visible,
                       style: TextStyle(
                         fontSize: 12,
                         color: scheme.onSurfaceVariant,

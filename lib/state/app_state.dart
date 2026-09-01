@@ -114,15 +114,39 @@ class TimerSession {
   }
 }
 
-/// 周统计结果（周一至周日）。
+/// 某一天的有效统计汇总（该日存在事件记录）。
+class DaySummary {
+  DaySummary({required this.date, required this.totals});
+
+  final DateTime date;
+
+  /// 该日各大类累计秒数（分类 code -> 秒）。
+  final Map<String, int> totals;
+
+  int get totalSec => totals.values.fold<int>(0, (sum, v) => sum + v);
+}
+
+/// 周统计结果（今天向前 7 天；只统计有事件记录的有效日期）。
 class WeekStats {
   DateTime weekStart = DateTime.now();
+  DateTime weekEnd = DateTime.now();
   final Map<String, int> workdayTotals = {};
   final Map<String, int> restdayTotals = {};
   final Map<String, int> weekTotals = {};
   final List<DateTime> emergencyDays = [];
+  final List<DaySummary> activeDays = [];
   int workdayCount = 0;
   int restdayCount = 0;
+  int activeDayCount = 0;
+
+  /// 是否存在有效记录日期。
+  bool get hasRecords => activeDays.isNotEmpty;
+
+  /// 总时长（秒）= 全部有效日期事件时长之和。
+  int get totalSec => weekTotals.values.fold<int>(0, (sum, v) => sum + v);
+
+  /// 日均时长（秒）= 总时长 / 有效记录天数；无有效日期返回 0，防止除以 0。
+  int get averageSec => activeDayCount > 0 ? totalSec ~/ activeDayCount : 0;
 }
 
 class AppState extends ChangeNotifier {
@@ -302,14 +326,22 @@ class AppState extends ChangeNotifier {
     return '休息日保持轻松节奏，记得留出放松时间';
   }
 
-  /// 当前所在周的工作日/休息日累计与平均、周累计；突发日期单独标记，不参与平均。
+  /// 周统计：统计范围是今天（含）向前 7 天。
+  /// 只统计有事件记录的有效日期；平均时长 = 总时长 / 有效记录天数。
   WeekStats computeWeekStats([DateTime? base]) {
-    final weekStart = startOfWeek(base ?? DateTime.now());
-    final stats = WeekStats()..weekStart = weekStart;
+    final today = dateOnly(base ?? DateTime.now());
+    final start = today.subtract(const Duration(days: 6));
+    final stats = WeekStats()
+      ..weekStart = start
+      ..weekEnd = today;
     for (var i = 0; i < 7; i++) {
-      final day = weekStart.add(Duration(days: i));
+      final day = start.add(Duration(days: i));
+      // 过滤掉完全没有事件记录的日期，只保留有事件的有效日期
+      if (recordsOnDay(day).isEmpty) continue;
       final mode = modeForDate(day);
       final totals = dayTotals(day);
+      stats.activeDays.add(DaySummary(date: day, totals: totals));
+      stats.activeDayCount++;
       for (final c in AppCategory.values) {
         final sec = totals[c.code] ?? 0;
         stats.weekTotals[c.code] = (stats.weekTotals[c.code] ?? 0) + sec;

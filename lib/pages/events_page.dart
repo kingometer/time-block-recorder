@@ -181,8 +181,9 @@ class _EventTile extends StatelessWidget {
                 padding: const EdgeInsets.only(top: 2),
                 child: Text(
                   event.note,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
+                  softWrap: true,
+                  maxLines: null,
+                  overflow: TextOverflow.visible,
                   style: TextStyle(
                     fontSize: 11,
                     color: Theme.of(context).colorScheme.onSurfaceVariant,
