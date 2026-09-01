@@ -255,7 +255,7 @@ class _NoteField extends StatelessWidget {
         Expanded(
           child: TextField(
             controller: controller,
-            maxLines: 2,
+            maxLines: null,
             minLines: 1,
             style: const TextStyle(fontSize: 13),
             decoration: InputDecoration(
