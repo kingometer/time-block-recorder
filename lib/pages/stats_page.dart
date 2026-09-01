@@ -57,7 +57,7 @@ class _DayViewState extends State<_DayView> {
     setState(() => _date = dateOnly(date));
     if (minute != null) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        _timelineKey.currentState?.scrollToMinute(minute);
+        _timelineKey.currentState?.scrollToMinute(context, minute);
       });
     }
   }
@@ -82,7 +82,7 @@ class _DayViewState extends State<_DayView> {
     final dayRecords = state.recordsOnDay(_date);
 
     return ListView(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 140),
       children: [
         Row(
           children: [

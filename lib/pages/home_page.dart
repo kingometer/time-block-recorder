@@ -217,7 +217,6 @@ class _NoteReviewCard extends StatelessWidget {
             ),
             const SizedBox(height: 10),
             _NoteField(
-              label: '简短备注',
               hint: '今天有什么安排/注意事项…',
               initial: meta?.note ?? '',
               onSave: (v) => state.setDayNote(today, v),
@@ -231,13 +230,11 @@ class _NoteReviewCard extends StatelessWidget {
 
 class _NoteField extends StatelessWidget {
   const _NoteField({
-    required this.label,
     required this.hint,
     required this.initial,
     required this.onSave,
   });
 
-  final String label;
   final String hint;
   final String initial;
   final ValueChanged<String> onSave;
@@ -248,10 +245,6 @@ class _NoteField extends StatelessWidget {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.center,
       children: [
-        SizedBox(
-          width: 64,
-          child: Text(label, style: const TextStyle(fontSize: 13)),
-        ),
         Expanded(
           child: TextField(
             controller: controller,

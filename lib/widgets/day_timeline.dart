@@ -152,13 +152,41 @@ class DayTimeline extends StatefulWidget {
 }
 
 class DayTimelineState extends State<DayTimeline> {
-  static const double _pixelsPerHour = 64;
-  static const double _detailHeight = 420;
+  static const double _defaultPixelsPerHour = 72;
+  static const double _minPixelsPerHour = 40;
+  static const double _maxPixelsPerHour = 140;
+  static const double _pixelsPerHourStep = 8;
   static const double _miniHeight = 56;
 
   final ScrollController _controller = ScrollController();
+  double _pixelsPerHour = _defaultPixelsPerHour;
 
   double get _totalHeight => 24 * _pixelsPerHour;
+
+  void _zoomIn() {
+    setState(() {
+      _pixelsPerHour = math.min(
+        _maxPixelsPerHour,
+        _pixelsPerHour + _pixelsPerHourStep,
+      );
+    });
+  }
+
+  void _zoomOut() {
+    setState(() {
+      _pixelsPerHour = math.max(
+        _minPixelsPerHour,
+        _pixelsPerHour - _pixelsPerHourStep,
+      );
+    });
+  }
+
+  /// 详细时间轴可视高度：按屏幕高度自适应，避免超出可视区被底部导航遮挡。
+  double _detailHeight(BuildContext context) {
+    final screenH = MediaQuery.sizeOf(context).height;
+    // 减去顶部栏/底部导航/页面边距后，保证卡片整体不超出可视区。
+    return (screenH - 380).clamp(320.0, 620.0);
+  }
 
   @override
   void dispose() {
@@ -167,10 +195,10 @@ class DayTimelineState extends State<DayTimeline> {
   }
 
   /// 将详细时间轴滚动定位到指定分钟（0-1440）。
-  void scrollToMinute(int minute) {
+  void scrollToMinute(BuildContext context, int minute) {
     if (!_controller.hasClients) return;
     final m = minute.clamp(0, 1440);
-    final target = m / 1440 * _totalHeight - _detailHeight * 0.3;
+    final target = m / 1440 * _totalHeight - _detailHeight(context) * 0.3;
     _controller.jumpTo(target.clamp(0.0, _controller.position.maxScrollExtent));
   }
 
@@ -235,6 +263,10 @@ class DayTimelineState extends State<DayTimeline> {
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     final state = context.watch<AppState>();
+    final detailHeight = _detailHeight(context);
+    final now = DateTime.now();
+    final isToday = dateOnly(widget.date) == dateOnly(now);
+    final nowMinute = now.hour * 60 + now.minute;
     final segments = buildTimelineSegments(
       state.recordsOnDay(widget.date),
       widget.date,
@@ -248,9 +280,37 @@ class DayTimelineState extends State<DayTimeline> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text(
-              '24小时时间轴',
-              style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
+            Row(
+              children: [
+                const Text(
+                  '24小时时间轴',
+                  style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
+                ),
+                const Spacer(),
+                IconButton(
+                  tooltip: '缩小',
+                  visualDensity: VisualDensity.compact,
+                  onPressed: _zoomOut,
+                  icon: const Icon(Icons.zoom_out, size: 20),
+                ),
+                SizedBox(
+                  width: 48,
+                  child: Text(
+                    '${(_pixelsPerHour / _defaultPixelsPerHour).toStringAsFixed(1)}×',
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+                IconButton(
+                  tooltip: '放大',
+                  visualDensity: VisualDensity.compact,
+                  onPressed: _zoomIn,
+                  icon: const Icon(Icons.zoom_in, size: 20),
+                ),
+              ],
             ),
             const SizedBox(height: 8),
             // 顶部缩略总览：仅色块，点击定位
@@ -258,7 +318,7 @@ class DayTimelineState extends State<DayTimeline> {
               onTapUp: (d) {
                 final minute = (d.localPosition.dy / _miniHeight * 1440)
                     .round();
-                scrollToMinute(minute);
+                scrollToMinute(context, minute);
               },
               child: Container(
                 height: _miniHeight,
@@ -288,51 +348,85 @@ class DayTimelineState extends State<DayTimeline> {
             const SizedBox(height: 8),
             // 下方详细时间轴
             SizedBox(
-              height: _detailHeight,
+              height: detailHeight,
               child: ClipRRect(
                 borderRadius: BorderRadius.circular(8),
                 child: SingleChildScrollView(
                   controller: _controller,
-                  child: SizedBox(
-                    height: _totalHeight,
-                    child: Stack(
-                      children: [
-                        for (var h = 0; h <= 24; h++) ...[
-                          Positioned(
-                            top: h * _pixelsPerHour,
-                            left: 0,
-                            right: 0,
-                            child: const Divider(height: 1),
+                  child: Padding(
+                    padding: const EdgeInsets.only(bottom: 24),
+                    child: SizedBox(
+                      height: _totalHeight,
+                      child: Stack(
+                        children: [
+                          Positioned.fill(
+                            child: ColoredBox(
+                              color: scheme.surfaceContainerHighest.withValues(
+                                alpha: 0.35,
+                              ),
+                            ),
                           ),
-                          if (h < 24)
+                          for (var h = 0; h <= 24; h++) ...[
                             Positioned(
-                              top: h * _pixelsPerHour + 2,
-                              left: 6,
-                              child: Text(
-                                two(h),
-                                style: TextStyle(
-                                  fontSize: 10,
-                                  color: scheme.onSurfaceVariant,
+                              top: h * _pixelsPerHour,
+                              left: 0,
+                              right: 0,
+                              child: const Divider(height: 1),
+                            ),
+                            if (h < 24)
+                              Positioned(
+                                top: h * _pixelsPerHour + 2,
+                                left: 6,
+                                child: Text(
+                                  two(h),
+                                  style: TextStyle(
+                                    fontSize: 10,
+                                    color: scheme.onSurfaceVariant,
+                                  ),
+                                ),
+                              ),
+                          ],
+                          for (final s in segments)
+                            Positioned(
+                              left: 40,
+                              right: 10,
+                              top: s.startMin / 60 * _pixelsPerHour,
+                              height: math.max(
+                                4.0,
+                                s.durationMin / 60 * _pixelsPerHour,
+                              ),
+                              child: _TimelineBlock(
+                                segment: s,
+                                onTap: () => _onBlockTap(context, state, s),
+                                onLongPress: () =>
+                                    _onBlockLongPress(context, s),
+                              ),
+                            ),
+                          if (isToday)
+                            Positioned(
+                              left: 40,
+                              right: 10,
+                              top: nowMinute / 60 * _pixelsPerHour - 1,
+                              child: Container(
+                                height: 2,
+                                color: const Color(0xFFEF4444),
+                              ),
+                            ),
+                          if (isToday)
+                            Positioned(
+                              left: 4,
+                              top: nowMinute / 60 * _pixelsPerHour - 6,
+                              child: Container(
+                                width: 12,
+                                height: 12,
+                                decoration: const BoxDecoration(
+                                  color: Color(0xFFEF4444),
+                                  shape: BoxShape.circle,
                                 ),
                               ),
                             ),
                         ],
-                        for (final s in segments)
-                          Positioned(
-                            left: 40,
-                            right: 10,
-                            top: s.startMin / 60 * _pixelsPerHour,
-                            height: math.max(
-                              4.0,
-                              s.durationMin / 60 * _pixelsPerHour,
-                            ),
-                            child: _TimelineBlock(
-                              segment: s,
-                              onTap: () => _onBlockTap(context, state, s),
-                              onLongPress: () => _onBlockLongPress(context, s),
-                            ),
-                          ),
-                      ],
+                      ),
                     ),
                   ),
                 ),
@@ -364,25 +458,42 @@ class _TimelineBlock extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final color = timelineColor(segment.label);
+    final isGap = segment.isGap;
+    final background = isGap
+        ? color.withValues(alpha: 0.16)
+        : color.withValues(alpha: 0.9);
+    final foreground = isGap
+        ? Theme.of(context).colorScheme.onSurfaceVariant
+        : (segment.label == '娱乐' ? Colors.black87 : Colors.white);
     final startText =
         '${two(segment.startMin ~/ 60)}:${two(segment.startMin % 60)}';
     final endText = '${two(segment.endMin ~/ 60)}:${two(segment.endMin % 60)}';
     return Material(
-      color: color.withValues(alpha: segment.isGap ? 0.30 : 0.85),
-      borderRadius: BorderRadius.circular(6),
+      color: background,
+      borderRadius: BorderRadius.circular(8),
       child: InkWell(
         onTap: onTap,
         onLongPress: onLongPress,
+        borderRadius: BorderRadius.circular(8),
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
           child: Text(
             '${segment.label} $startText-$endText',
             maxLines: 1,
             overflow: TextOverflow.clip,
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: 12,
               fontWeight: FontWeight.w600,
-              color: Colors.black87,
+              color: foreground,
+              shadows: isGap
+                  ? null
+                  : const [
+                      Shadow(
+                        color: Colors.black26,
+                        blurRadius: 2,
+                        offset: Offset(0, 1),
+                      ),
+                    ],
             ),
           ),
         ),

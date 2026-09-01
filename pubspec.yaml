@@ -1,7 +1,7 @@
 name: time_block_recorder
 description: 时间区块记录器
 publish_to: 'none'
-version: 2.2.0+4
+version: 2.3.0+5
 
 environment:
   sdk: ^3.10.0
