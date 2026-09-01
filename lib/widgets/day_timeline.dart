@@ -183,9 +183,12 @@ class DayTimelineState extends State<DayTimeline> {
 
   /// 详细时间轴可视高度：按屏幕高度自适应，避免超出可视区被底部导航遮挡。
   double _detailHeight(BuildContext context) {
-    final screenH = MediaQuery.sizeOf(context).height;
-    // 减去顶部栏/底部导航/页面边距后，保证卡片整体不超出可视区。
-    return (screenH - 380).clamp(320.0, 620.0);
+    final size = MediaQuery.sizeOf(context);
+    final topInset = MediaQuery.paddingOf(context).top;
+    // 依次扣除状态栏、AppBar+TabBar、底部导航、页面上下边距与卡片除详情区
+    // 外的固定高度（约 158px），并额外保留 40px 余量，保证卡片初始位置就
+    // 整体落在可视区内，底部 23:00 之后的内容不被裁切。
+    return (size.height - topInset - 400).clamp(260.0, 620.0);
   }
 
   @override
@@ -354,7 +357,7 @@ class DayTimelineState extends State<DayTimeline> {
                 child: SingleChildScrollView(
                   controller: _controller,
                   child: Padding(
-                    padding: const EdgeInsets.only(bottom: 24),
+                    padding: const EdgeInsets.only(bottom: 32),
                     child: SizedBox(
                       height: _totalHeight,
                       child: Stack(
