@@ -31,6 +31,8 @@ class TimerPage extends StatelessWidget {
   void _openStartSheet(BuildContext context, AppState state, EventItem event) {
     var countdown = false;
     var estimateMin = 60;
+    var preRecordTomorrow = false;
+    final tomorrow = dateOnly(DateTime.now().add(const Duration(days: 1)));
     final estimateController = TextEditingController(text: '60');
     final noteController = TextEditingController(text: event.note);
     showModalBottomSheet<void>(
@@ -76,53 +78,81 @@ class TimerPage extends StatelessWidget {
                   controller: noteController,
                   maxLines: 2,
                   minLines: 1,
-                  decoration: const InputDecoration(
-                    labelText: '本次备注（可选，保存到事件）',
+                  decoration: InputDecoration(
+                    labelText: preRecordTomorrow
+                        ? '预录备注（可选，记入明日计划）'
+                        : '本次备注（可选，保存到事件）',
                     isDense: true,
                   ),
                 ),
-                const SizedBox(height: 16),
+                const SizedBox(height: 12),
                 SegmentedButton<bool>(
+                  showSelectedIcon: false,
+                  style: const ButtonStyle(
+                    visualDensity: VisualDensity.compact,
+                  ),
                   segments: const [
-                    ButtonSegment(value: false, label: Text('正计时')),
-                    ButtonSegment(value: true, label: Text('倒计时')),
+                    ButtonSegment(value: false, label: Text('今天开始')),
+                    ButtonSegment(value: true, label: Text('明天预录')),
                   ],
-                  selected: {countdown},
+                  selected: {preRecordTomorrow},
                   onSelectionChanged: (s) =>
-                      setState(() => countdown = s.first),
+                      setState(() => preRecordTomorrow = s.first),
                 ),
-                if (countdown) ...[
-                  const SizedBox(height: 14),
-                  const Text('预估时长', style: TextStyle(fontSize: 13)),
-                  const SizedBox(height: 6),
-                  Wrap(
-                    spacing: 8,
-                    children: [
-                      for (final m in [15, 30, 45, 60, 90, 120, 180])
-                        ChoiceChip(
-                          label: Text('$m 分钟'),
-                          selected: estimateMin == m,
-                          onSelected: (_) => setState(() {
-                            estimateMin = m;
-                            estimateController.text = '$m';
-                          }),
-                        ),
-                    ],
-                  ),
-                  const SizedBox(height: 10),
-                  TextField(
-                    controller: estimateController,
-                    keyboardType: TextInputType.number,
-                    decoration: const InputDecoration(
-                      labelText: '自定义分钟数',
-                      suffixText: '分钟',
-                      isDense: true,
+                if (preRecordTomorrow) ...[
+                  const SizedBox(height: 8),
+                  Text(
+                    '仅把「${event.name}」登记到明天（${tomorrow.month}月${tomorrow.day}日）计划，'
+                    '不会启动计时；明天可在 统计-日视图 查看并开始计时',
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: Theme.of(sheetCtx).colorScheme.onSurfaceVariant,
                     ),
-                    onChanged: (v) {
-                      final n = int.tryParse(v.trim());
-                      if (n != null && n > 0) estimateMin = n;
-                    },
                   ),
+                ] else ...[
+                  const SizedBox(height: 12),
+                  SegmentedButton<bool>(
+                    segments: const [
+                      ButtonSegment(value: false, label: Text('正计时')),
+                      ButtonSegment(value: true, label: Text('倒计时')),
+                    ],
+                    selected: {countdown},
+                    onSelectionChanged: (s) =>
+                        setState(() => countdown = s.first),
+                  ),
+                  if (countdown) ...[
+                    const SizedBox(height: 14),
+                    const Text('预估时长', style: TextStyle(fontSize: 13)),
+                    const SizedBox(height: 6),
+                    Wrap(
+                      spacing: 8,
+                      children: [
+                        for (final m in [15, 30, 45, 60, 90, 120, 180])
+                          ChoiceChip(
+                            label: Text('$m 分钟'),
+                            selected: estimateMin == m,
+                            onSelected: (_) => setState(() {
+                              estimateMin = m;
+                              estimateController.text = '$m';
+                            }),
+                          ),
+                      ],
+                    ),
+                    const SizedBox(height: 10),
+                    TextField(
+                      controller: estimateController,
+                      keyboardType: TextInputType.number,
+                      decoration: const InputDecoration(
+                        labelText: '自定义分钟数',
+                        suffixText: '分钟',
+                        isDense: true,
+                      ),
+                      onChanged: (v) {
+                        final n = int.tryParse(v.trim());
+                        if (n != null && n > 0) estimateMin = n;
+                      },
+                    ),
+                  ],
                 ],
                 const SizedBox(height: 18),
                 Row(
@@ -138,14 +168,25 @@ class TimerPage extends StatelessWidget {
                       child: FilledButton(
                         onPressed: () {
                           Navigator.pop(sheetCtx);
-                          state.updateEventNote(event, noteController.text);
-                          state.startTimer(
-                            event,
-                            countdown: countdown,
-                            estimateSec: estimateMin * 60,
-                          );
+                          if (preRecordTomorrow) {
+                            state.addPlan(
+                              tomorrow,
+                              event: event,
+                              note: noteController.text,
+                            );
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(content: Text('已预录到明天：${event.name}')),
+                            );
+                          } else {
+                            state.updateEventNote(event, noteController.text);
+                            state.startTimer(
+                              event,
+                              countdown: countdown,
+                              estimateSec: estimateMin * 60,
+                            );
+                          }
                         },
-                        child: const Text('开始计时'),
+                        child: Text(preRecordTomorrow ? '预录到明天' : '开始计时'),
                       ),
                     ),
                   ],

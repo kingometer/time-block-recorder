@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import '../models/category.dart';
 import '../models/event_item.dart';
 import '../state/app_state.dart';
+import '../utils/format.dart';
 
 class EventsPage extends StatelessWidget {
   const EventsPage({super.key});
@@ -58,42 +59,88 @@ class EventsPage extends StatelessWidget {
     AppCategory category = event != null
         ? AppCategory.fromCode(event.categoryCode)
         : AppCategory.workStudy;
+    var planTomorrow = false;
+    final tomorrow = dateOnly(DateTime.now().add(const Duration(days: 1)));
     showDialog<void>(
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setState) => AlertDialog(
           title: Text(event == null ? '新建事件' : '编辑事件'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(
-                controller: nameController,
-                autofocus: true,
-                decoration: const InputDecoration(labelText: '事件名称'),
-              ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: noteController,
-                maxLines: 3,
-                minLines: 2,
-                decoration: const InputDecoration(
-                  labelText: '备注（可选）',
-                  hintText: '例如：本周要复习的章节、健身计划…',
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextField(
+                  controller: nameController,
+                  autofocus: true,
+                  decoration: const InputDecoration(labelText: '事件名称'),
                 ),
-              ),
-              const SizedBox(height: 14),
-              DropdownButtonFormField<AppCategory>(
-                initialValue: category,
-                decoration: const InputDecoration(labelText: '归属分类'),
-                items: [
-                  for (final c in AppCategory.values)
-                    DropdownMenuItem(value: c, child: Text(c.label)),
+                if (event == null) ...[
+                  const SizedBox(height: 10),
+                  Row(
+                    children: [
+                      const Text(
+                        '归属日期',
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: SegmentedButton<bool>(
+                          showSelectedIcon: false,
+                          style: const ButtonStyle(
+                            visualDensity: VisualDensity.compact,
+                          ),
+                          segments: const [
+                            ButtonSegment(value: false, label: Text('今天')),
+                            ButtonSegment(value: true, label: Text('明天')),
+                          ],
+                          selected: {planTomorrow},
+                          onSelectionChanged: (s) =>
+                              setState(() => planTomorrow = s.first),
+                        ),
+                      ),
+                    ],
+                  ),
+                  if (planTomorrow)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 6),
+                      child: Text(
+                        '同时创建事件并预录到明天（${tomorrow.month}月${tomorrow.day}日），'
+                        '届时可在 统计-日视图 查看该事件与备注',
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: Theme.of(ctx).colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+                    ),
                 ],
-                onChanged: (v) {
-                  if (v != null) setState(() => category = v);
-                },
-              ),
-            ],
+                const SizedBox(height: 12),
+                TextField(
+                  controller: noteController,
+                  maxLines: 3,
+                  minLines: 2,
+                  decoration: const InputDecoration(
+                    labelText: '备注（可选）',
+                    hintText: '例如：本周要复习的章节、健身计划…',
+                  ),
+                ),
+                const SizedBox(height: 14),
+                DropdownButtonFormField<AppCategory>(
+                  initialValue: category,
+                  decoration: const InputDecoration(labelText: '归属分类'),
+                  items: [
+                    for (final c in AppCategory.values)
+                      DropdownMenuItem(value: c, child: Text(c.label)),
+                  ],
+                  onChanged: (v) {
+                    if (v != null) setState(() => category = v);
+                  },
+                ),
+              ],
+            ),
           ),
           actions: [
             TextButton(
@@ -105,7 +152,14 @@ class EventsPage extends StatelessWidget {
                 final name = nameController.text.trim();
                 if (name.isEmpty) return;
                 if (event == null) {
-                  state.addEvent(name, category, note: noteController.text);
+                  final created = state.addEvent(
+                    name,
+                    category,
+                    note: noteController.text,
+                  );
+                  if (planTomorrow && created != null) {
+                    state.addPlan(tomorrow, event: created);
+                  }
                 } else {
                   state.updateEvent(event, name, category);
                   state.updateEventNote(event, noteController.text);

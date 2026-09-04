@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import '../models/category.dart';
 import '../models/day_mode.dart';
 import '../models/event_item.dart';
+import '../models/planned_entry.dart';
 import '../models/time_record.dart';
 import '../state/app_state.dart';
 import '../utils/format.dart';
@@ -159,6 +160,8 @@ class _DayViewState extends State<_DayView> {
           text: meta?.review ?? '',
           onTap: () => showReviewEditDialog(context, state, _date),
         ),
+        const SizedBox(height: 10),
+        _PlansSection(date: _date, state: state),
         const SizedBox(height: 12),
         CategoryPieChart(totals: totals, title: '当日分类占比'),
         const SizedBox(height: 12),
@@ -385,6 +388,207 @@ class _CategoryBreakdownCard extends StatelessWidget {
       ),
     );
   }
+}
+
+// ---------------- 预录入计划（今日/明日登记，不产生计时时长） ----------------
+
+class _PlansSection extends StatelessWidget {
+  const _PlansSection({required this.date, required this.state});
+
+  final DateTime date;
+  final AppState state;
+
+  @override
+  Widget build(BuildContext context) {
+    final plans = state.plansOnDate(date);
+    if (plans.isEmpty) return const SizedBox.shrink();
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.only(bottom: 8),
+          child: Row(
+            children: [
+              const Icon(Icons.event_available_outlined, size: 17),
+              const SizedBox(width: 6),
+              Expanded(
+                child: Text(
+                  '预录计划（${plans.length}）',
+                  style: const TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.only(bottom: 8),
+          child: Text(
+            '仅登记不计时，开始计时后才进入统计/时间轴',
+            style: TextStyle(
+              fontSize: 11,
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+            ),
+          ),
+        ),
+        for (final p in plans) _PlanTile(plan: p, state: state),
+      ],
+    );
+  }
+}
+
+class _PlanTile extends StatelessWidget {
+  const _PlanTile({required this.plan, required this.state});
+
+  final PlannedEntry plan;
+  final AppState state;
+
+  @override
+  Widget build(BuildContext context) {
+    final category = AppCategory.fromCode(plan.categoryCode);
+    final scheme = Theme.of(context).colorScheme;
+    return Card(
+      margin: const EdgeInsets.only(bottom: 8),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(12),
+        onTap: () => showPlanNoteDialog(context, state, plan),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(12, 6, 2, 6),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  CircleAvatar(
+                    radius: 13,
+                    backgroundColor: category.color.withValues(alpha: 0.14),
+                    child: Icon(category.icon, size: 15, color: category.color),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      plan.eventName,
+                      style: const TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                  IconButton(
+                    tooltip: '编辑备注',
+                    visualDensity: VisualDensity.compact,
+                    icon: const Icon(Icons.edit_outlined, size: 18),
+                    onPressed: () => showPlanNoteDialog(context, state, plan),
+                  ),
+                  IconButton(
+                    tooltip: '删除预录',
+                    visualDensity: VisualDensity.compact,
+                    icon: const Icon(Icons.delete_outline, size: 18),
+                    onPressed: () => _confirmDeletePlan(context, state, plan),
+                  ),
+                ],
+              ),
+              if (plan.note.isNotEmpty)
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(34, 2, 10, 4),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Expanded(
+                        child: Text(
+                          plan.note,
+                          softWrap: true,
+                          maxLines: null,
+                          overflow: TextOverflow.visible,
+                          style: TextStyle(
+                            fontSize: 12,
+                            height: 1.5,
+                            color: scheme.onSurfaceVariant,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// 预录计划备注编辑弹窗：完整显示、不限行数、可滚动。
+Future<void> showPlanNoteDialog(
+  BuildContext context,
+  AppState state,
+  PlannedEntry plan,
+) async {
+  final controller = TextEditingController(text: plan.note);
+  await showDialog<void>(
+    context: context,
+    builder: (ctx) => AlertDialog(
+      title: Text('预录备注 · ${plan.eventName}'),
+      content: SingleChildScrollView(
+        child: TextField(
+          controller: controller,
+          minLines: 6,
+          maxLines: null,
+          keyboardType: TextInputType.multiline,
+          textInputAction: TextInputAction.newline,
+          decoration: const InputDecoration(
+            hintText: '输入预录备注内容…',
+            border: OutlineInputBorder(),
+          ),
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(ctx),
+          child: const Text('取消'),
+        ),
+        FilledButton(
+          onPressed: () {
+            state.updatePlanNote(plan, controller.text);
+            Navigator.pop(ctx);
+          },
+          child: const Text('保存'),
+        ),
+      ],
+    ),
+  );
+}
+
+void _confirmDeletePlan(
+  BuildContext context,
+  AppState state,
+  PlannedEntry plan,
+) {
+  showDialog<void>(
+    context: context,
+    builder: (ctx) => AlertDialog(
+      title: const Text('删除预录'),
+      content: Text('确定删除预录「${plan.eventName}」吗？'),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(ctx),
+          child: const Text('取消'),
+        ),
+        FilledButton(
+          style: FilledButton.styleFrom(
+            backgroundColor: Theme.of(ctx).colorScheme.error,
+          ),
+          onPressed: () {
+            state.deletePlan(plan);
+            Navigator.pop(ctx);
+          },
+          child: const Text('删除'),
+        ),
+      ],
+    ),
+  );
 }
 
 // ---------------- 周视图 ----------------

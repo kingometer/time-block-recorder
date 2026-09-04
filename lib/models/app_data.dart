@@ -2,6 +2,7 @@ import 'app_settings.dart';
 import 'category.dart';
 import 'day_meta.dart';
 import 'event_item.dart';
+import 'planned_entry.dart';
 import 'time_record.dart';
 import '../utils/format.dart';
 
@@ -12,7 +13,8 @@ class AppData {
     required this.dayMetas,
     required this.settings,
     this.schemaVersion = 2,
-  });
+    Map<String, List<PlannedEntry>>? plans,
+  }) : plans = plans ?? {};
 
   List<EventItem> events;
   List<TimeRecord> records;
@@ -21,6 +23,9 @@ class AppData {
   Map<String, DayMeta> dayMetas;
   AppSettings settings;
   int schemaVersion;
+
+  /// 按日期（yyyy-MM-dd）索引的「预录入」计划条目。
+  Map<String, List<PlannedEntry>> plans;
 
   /// 首次启动的默认数据：内置初始事件、默认每日/周目标。
   factory AppData.createDefault() {
@@ -110,6 +115,30 @@ class AppData {
       ..clear()
       ..addAll(mergedMetas);
 
+    final planByKey = <String, PlannedEntry>{
+      for (final list in plans.values)
+        for (final p in list) '${p.date}|${p.id}': p,
+    };
+    for (final list in incoming.plans.values) {
+      for (final p in list) {
+        final key = '${p.date}|${p.id}';
+        final cur = planByKey[key];
+        if (cur == null || p.createdAtMs >= cur.createdAtMs) {
+          planByKey[key] = p;
+        }
+      }
+    }
+    final mergedPlans = <String, List<PlannedEntry>>{};
+    for (final p in planByKey.values) {
+      mergedPlans.putIfAbsent(p.date, () => []).add(p);
+    }
+    for (final list in mergedPlans.values) {
+      list.sort((a, b) => a.createdAtMs.compareTo(b.createdAtMs));
+    }
+    plans
+      ..clear()
+      ..addAll(mergedPlans);
+
     settings.workdayTargets = {...incoming.settings.workdayTargets};
     settings.restdayTargets = {...incoming.settings.restdayTargets};
     settings.weeklyGoals = {...incoming.settings.weeklyGoals};
@@ -137,6 +166,7 @@ class AppData {
     'events': events.map((e) => e.toJson()).toList(),
     'records': records.map((r) => r.toJson()).toList(),
     'dayMetas': dayMetas.values.map((m) => m.toJson()).toList(),
+    'plans': plans.values.expand((l) => l).map((p) => p.toJson()).toList(),
   };
 
   factory AppData.fromJson(Map<String, dynamic> json) {
@@ -151,6 +181,14 @@ class AppData {
       final meta = DayMeta.fromJson((m as Map).cast<String, dynamic>());
       dayMetas[meta.date] = meta;
     }
+    final plans = <String, List<PlannedEntry>>{};
+    for (final p in ((json['plans'] as List?) ?? const [])) {
+      final entry = PlannedEntry.fromJson((p as Map).cast<String, dynamic>());
+      plans.putIfAbsent(entry.date, () => []).add(entry);
+    }
+    for (final list in plans.values) {
+      list.sort((a, b) => a.createdAtMs.compareTo(b.createdAtMs));
+    }
     final settings = json['settings'] is Map
         ? AppSettings.fromJson(
             (json['settings'] as Map).cast<String, dynamic>(),
@@ -161,6 +199,7 @@ class AppData {
       records: records,
       dayMetas: dayMetas,
       settings: settings,
+      plans: plans,
       schemaVersion: (json['schemaVersion'] as num?)?.toInt() ?? 1,
     );
   }

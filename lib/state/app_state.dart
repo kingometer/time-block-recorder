@@ -8,6 +8,7 @@ import '../models/category.dart';
 import '../models/day_meta.dart';
 import '../models/day_mode.dart';
 import '../models/event_item.dart';
+import '../models/planned_entry.dart';
 import '../models/time_record.dart';
 import '../models/timer_snapshot.dart';
 import '../services/import_export.dart';
@@ -365,18 +366,55 @@ class AppState extends ChangeNotifier {
   }
 
   // ---------- 事件管理 ----------
-  void addEvent(String name, AppCategory category, {String note = ''}) {
+  EventItem? addEvent(String name, AppCategory category, {String note = ''}) {
     final trimmed = name.trim();
-    if (trimmed.isEmpty) return;
-    data.events.add(
-      EventItem(
-        id: newId(),
-        name: trimmed,
-        categoryCode: category.code,
-        note: note.trim(),
-        createdAt: DateTime.now(),
-      ),
+    if (trimmed.isEmpty) return null;
+    final event = EventItem(
+      id: newId(),
+      name: trimmed,
+      categoryCode: category.code,
+      note: note.trim(),
+      createdAt: DateTime.now(),
     );
+    data.events.add(event);
+    _saveAndNotify();
+    return event;
+  }
+
+  // ---------- 预录入（明日/今日计划） ----------
+
+  /// 某日期已登记的预录入计划（按创建先后排序）。
+  List<PlannedEntry> plansOnDate(DateTime date) {
+    final list = data.plans[dateKey(date)] ?? const <PlannedEntry>[];
+    return [...list]..sort((a, b) => a.createdAtMs.compareTo(b.createdAtMs));
+  }
+
+  /// 把某个事件预录入到指定日期（仅登记，不启动计时、不产生计时记录）。
+  void addPlan(DateTime date, {required EventItem event, String note = ''}) {
+    final key = dateKey(date);
+    final entry = PlannedEntry(
+      id: newId(),
+      eventId: event.id,
+      eventName: event.name,
+      categoryCode: event.categoryCode,
+      date: key,
+      note: note.trim(),
+      createdAtMs: DateTime.now().millisecondsSinceEpoch,
+    );
+    data.plans.putIfAbsent(key, () => []).add(entry);
+    _saveAndNotify();
+  }
+
+  void updatePlanNote(PlannedEntry plan, String note) {
+    plan.note = note.trim();
+    _saveAndNotify();
+  }
+
+  void deletePlan(PlannedEntry plan) {
+    final list = data.plans[plan.date];
+    if (list == null) return;
+    list.removeWhere((p) => p.id == plan.id);
+    if (list.isEmpty) data.plans.remove(plan.date);
     _saveAndNotify();
   }
 
